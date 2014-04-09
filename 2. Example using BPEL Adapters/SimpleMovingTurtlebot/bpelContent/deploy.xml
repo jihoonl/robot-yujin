@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<deploy xmlns="http://www.apache.org/ode/schemas/dd/2007/03" xmlns:adapter="http://smartylab.co.kr/products/op/adapter" xmlns:simplemoving="http://smartylab.co.kr/products/op/simplemoving">
+  <process name="simplemoving:SimpleMovingTurtlebot">
+    <process-events generate="all"/>
+    <provide partnerLink="client">
+      <service name="simplemoving:SimpleMovingTurtlebotService" port="SimpleMovingTurtlebotPort"/>
+    </provide>
+    <invoke partnerLink="adapter">
+      <service name="adapter:OPAdapter" port="OPAdapterSOAP"/>
+    </invoke>
+  </process>
+</deploy>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<deploy xmlns="http://www.apache.org/ode/schemas/dd/2007/03" xmlns:adapter="http://smartylab.co.kr/products/op/adapter" xmlns:client="http://smartylab.co.kr/products/op/adapter/client">
+  <process name="client:OPAdapterClient">
+    <process-events generate="all"/>
+    <provide partnerLink="client">
+      <service name="client:OPAdapterClientService" port="OPAdapterClientPort"/>
+    </provide>
+    <invoke partnerLink="adapter">
+      <service name="adapter:OPAdapter" port="OPAdapterSOAP"/>
+    </invoke>
+  </process>
+</deploy>
