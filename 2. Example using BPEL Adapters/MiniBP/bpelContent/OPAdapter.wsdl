@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://smartylab.co.kr/products/op/adapter" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="OPAdapter" targetNamespace="http://smartylab.co.kr/products/op/adapter">
+  <wsdl:types>
+    <xsd:schema targetNamespace="http://smartylab.co.kr/products/op/adapter">
+      <xsd:element name="adapt">
+        <xsd:complexType>
+          <xsd:sequence>
+          	<xsd:element name="nodeID" type="xsd:string" />
+          	<xsd:element name="resourceName" type="xsd:string"></xsd:element>
+                        <xsd:element name="duration" type="xsd:string"></xsd:element>
+                        <xsd:element name="options" type="xsd:string"></xsd:element>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+      <xsd:element name="adaptResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="out" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+    </xsd:schema>
+  </wsdl:types>
+  <wsdl:message name="adaptRequest">
+    <wsdl:part element="tns:adapt" name="parameters"/>
+  </wsdl:message>
+  <wsdl:message name="adaptResponse">
+    <wsdl:part element="tns:adaptResponse" name="parameters"/>
+  </wsdl:message>
+  <wsdl:portType name="OPAdapter">
+    <wsdl:operation name="adapt">
+      <wsdl:input message="tns:adaptRequest"/>
+      <wsdl:output message="tns:adaptResponse"/>
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="OPAdapterSOAP" type="tns:OPAdapter">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="adapt">
+      <soap:operation soapAction="http://smartylab.co.kr/products/op/adapter/NewOperation"/>
+      <wsdl:input>
+        <soap:body use="literal"/>
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal"/>
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="OPAdapter">
+    <wsdl:port binding="tns:OPAdapterSOAP" name="OPAdapterSOAP">
+      <soap:address location="http://localhost:8008"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
