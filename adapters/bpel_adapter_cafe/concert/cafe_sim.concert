@@ -1,0 +1,15 @@
+<concert>
+    <launch title="concert:11311" package="bpel_adapter_cafe" name="concert.launch" port="11311">
+      <arg name="services" value="bpel_adapter_cafe/bpel_adapter.services"/>
+    </launch>
+
+    <launch title="cafe_backend:11312"    package="bpel_adapter_cafe" name="cafe_backend.launch" port="11312">
+      <arg name="concert_client_name" value="cafe_backend"/>
+    </launch>
+    <launch title="cafe_backend:11313"    package="bpel_adapter_cafe" name="cafe_backend.launch" port="11313">
+      <arg name="concert_client_name" value="adams"/>
+    </launch>
+    <launch title="cafe_backend:11314"    package="bpel_adapter_cafe" name="cafe_backend.launch" port="11314">
+      <arg name="concert_client_name" value="zach"/>
+    </launch>
+</concert>

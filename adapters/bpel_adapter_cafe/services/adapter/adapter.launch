@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="bpel_adapter_cafe" type="adapter_svc.py" name="adapter_svc" required="true">
+  </node>
+</launch>

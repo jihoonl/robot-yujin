@@ -4,17 +4,6 @@
 #   https://raw.github.com/robotics-in-concert/concert_services/license/LICENSE
 #
 ##############################################################################
-# About
-##############################################################################
-
-# Simple script to pimp out teleop operations for rocon interactions.
-#
-# - watch the app manager status and when it has a remote controller,
-# - flip a spawn/kill pair across
-# - call the spawn api
-#  - the turtle herder will flip back some handles then.
-
-##############################################################################
 # Imports
 ##############################################################################
 
@@ -23,16 +12,24 @@ import threading
 import time
 import datetime
 
+from std_msgs.msg import String
+
 import rospy
 import rocon_python_comms
 import concert_service_utilities
-import rocon_scheduler_requests
+import concert_scheduler_requests
 import unique_id
 import std_msgs.msg as std_msgs
 import rocon_std_msgs.msg as rocon_std_msgs
 import scheduler_msgs.msg as scheduler_msgs
 import concert_service_msgs.msg as concert_service_msgs
-import bpel_adapter.msg as adapter_msgs
+import bpel_adapter_cafe.msg as adapter_msgs
+import rospkg
+import concert_service_link_graph
+import rocon_uri
+
+#from server import AdapterSOAPServer as soap_server
+from server import Starter
 
 from geometry_msgs.msg import Twist
 
@@ -47,24 +44,32 @@ class AdapterSvc:
     __slots__ = [
         'service_name',
         'service_description',
+        'service_priority',
         'service_id',
-        'scheduler_resources_subscriber',
-        'list_available_teleops_server',
-        'available_teleops_publisher',
         'allocation_timeout',
-        'allocated_resources',
+        # 'allocated_resources',
         'requester',
+        'linkgraph',
         'lock',
         'pending_requests',   # a list of request id's pending feedback from the scheduler
         'allocated_requests'  # dic of { rocon uri : request id } for captured teleop robots.
-        'bpel_service_subscriber'
+        'bpel_service_subscriber',
+        'bpel_package_subscriber',
+        'bpel_command_subscriber'
     ]
 
     def __init__(self):
         ####################
+        # Initiate SOAP Server
+        ####################
+        self.soap_server = Starter()
+        self.soap_server.daemon = True
+        self.soap_server.start()
+
+        ####################
         # Discovery
         ####################
-        (self.service_name, self.service_description, self.service_id) = concert_service_utilities.get_service_info()
+        (self.service_name, self.service_description, self.service_priority, self.service_id) = concert_service_utilities.get_service_info()
         try:
             known_resources_topic_name = rocon_python_comms.find_topic('scheduler_msgs/KnownResources', timeout=rospy.rostime.Duration(5.0), unique=True)
         except rocon_python_comms.NotFoundException as e:
@@ -82,11 +87,12 @@ class AdapterSvc:
         self.command=''
 
         # Subscribe a topic from BPEL service
+        self.bpel_package_subscriber = rospy.Subscriber('package_find_request', String, self.package_find_request_callback)
         self.bpel_service_subscriber = rospy.Subscriber('resources_alloc_request', adapter_msgs.Adapter, self.resources_alloc_request_callback)
         self.bpel_command_subscriber = rospy.Subscriber('command_request', adapter_msgs.Adapter, self.command_request_callback)
 
         self.allocation_timeout = rospy.get_param('allocation_timeout', 15.0)  # seconds
-        
+
     def setup_requester(self, uuid):
         try:
             scheduler_requests_topic_name = concert_service_utilities.find_scheduler_requests_topic()
@@ -94,8 +100,26 @@ class AdapterSvc:
         except rocon_python_comms.NotFoundException as e:
             rospy.logerr("AdapterSVC : %s" % (str(e)))
             return  # raise an exception here?
-        frequency = rocon_scheduler_requests.common.HEARTBEAT_HZ
-        return rocon_scheduler_requests.Requester(self.requester_feedback, uuid, 0, scheduler_requests_topic_name, frequency)
+        frequency = concert_scheduler_requests.common.HEARTBEAT_HZ
+        return concert_scheduler_requests.Requester(self.requester_feedback, uuid, 0, scheduler_requests_topic_name, frequency)
+
+    def package_find_request_callback(self, msg):
+        '''
+            For setting a linkgraph, this method is invoked by receiving a package name from bpel service
+            @param msg: incoming message
+            @type msg: std_msgs.msg (String)
+        '''
+        pkg_name = msg.data
+        rospack = rospkg.RosPack()
+        ###################################
+        # To get a linkgraph by loading a linkgraph file using package name
+        # Remaining address to the linkgraph file should be discussed to make a pattern
+        # Currently there is no pattern for the address
+        ###################################
+        address_linkgraph = rospack.get_path(pkg_name) + "/services/cafe_delivery_sim/cafe_delivery_sim.link_graph"
+
+        impl_name, impl = concert_service_link_graph.load_linkgraph_from_file(address_linkgraph)
+        self.linkgraph = impl
 
     def resources_alloc_request_callback(self, msg):
         '''
@@ -106,17 +130,19 @@ class AdapterSvc:
         result = False
         # send a request
         rospy.loginfo("AdapterSvc : send request by topic")
-        data = adapter_msgs.Adapter()
-        data.resource.id = unique_id.toMsg(unique_id.fromRandom())
-        data.resource.uri = msg.resource.uri
-        data.resource.rapp = msg.resource.rapp
 
-        self.command = msg.command
-        self.command_duration = msg.command_duration
-        data.command = self.command
-        data.command_duration = self.command_duration
+        resource_list = []
+        for node in self.linkgraph.nodes:
 
-        resource_request_id = self.requester.new_request([data.resource])
+            print '============================================================'
+            print node
+            print '============================================================'
+
+            #if node.uri == msg.resource.uri:
+            if node.resource == msg.resource.uri:
+                resource = self._node_to_resource(node, self.linkgraph)
+                resource_list.append(resource)
+                resource_request_id = self.requester.new_request(resource_list)
 
         self.pending_requests.append(resource_request_id)
         self.requester.send_requests()
@@ -128,13 +154,13 @@ class AdapterSvc:
                 result = True
                 break
             rospy.rostime.wallsleep(0.1)
-        
+
         if result == False:
             rospy.logwarn("AdapterSvc : couldn't capture required resource [timed out][%s]" % msg.resource.uri)
             self.requester.rset[resource_request_id].cancel()
         else:
             rospy.loginfo("AdapterSvc : captured resouce [%s][%s]" % (msg.resource.uri, self.allocated_requests[msg.resource.uri]))
-      
+
     def command_request_callback(self, msg):
         '''
           Called by Subscriber when the command arrived from the server
@@ -154,7 +180,7 @@ class AdapterSvc:
         rospy.loginfo("command_request_callback : ready to send cmd_vel to turtlebot")
         rospy.loginfo("command_request_callback : command = %s", command)
         print "=================================================="
-        twist = Twist();        
+        twist = Twist();
 
         if command == 'forward':
             print 'in forward'
@@ -165,12 +191,12 @@ class AdapterSvc:
             print 'in backward'
             twist.linear.x = -0.1; twist.linear.y = 0; twist.linear.z = 0
             twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 0
-       
+
         elif command == 'cycle_left':
             print 'left'
             twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
             twist.angular.x = 0; twist.angular.y = 0; twist.angular.z = 1
-       
+
         elif command == 'cycle_right':
             print 'right'
             twist.linear.x = 0; twist.linear.y = 0; twist.linear.z = 0
@@ -192,7 +218,7 @@ class AdapterSvc:
             publisher.publish(twist)
             r.sleep()
 
-        print "=================================================="        
+        print "=================================================="
         command_reply_publisher = rospy.Publisher('/services/adapter/command_reply', std_msgs.String)
         time.sleep(1)
         command_reply_publisher.publish("command_success")
@@ -223,6 +249,7 @@ class AdapterSvc:
           @type dic { uuid.UUID : scheduler_msgs.ResourceRequest }
         '''
         for request_id, request in request_set.requests.iteritems():
+
             if request.msg.status == scheduler_msgs.Request.GRANTED:
                 if request_id in self.pending_requests:
                     self.pending_requests.remove(request_id)
@@ -245,6 +272,25 @@ class AdapterSvc:
         self.requester.cancel_all()
         self.requester.send_requests()
         #self.lock.release()
+
+    def _node_to_resource(self, node, linkgraph):
+        '''
+          Convert linkgraph information for a particular node to a scheduler_msgs.Resource type.
+
+          @param node : a node from the linkgraph
+          @type concert_msgs.LinkNode
+
+          @param linkgraph : the entire linkgraph (used to lookup the node's edges)
+          @type concert_msgs.LinkGraph
+
+          @return resource
+          @rtype scheduler_msgs.Resource
+        '''
+        resource = scheduler_msgs.Resource()
+        resource.rapp = rocon_uri.parse(node.resource).rapp
+        resource.uri = node.resource
+        resource.remappings = [rocon_std_msgs.Remapping(e.remap_from, e.remap_to) for e in linkgraph.edges if e.start == node.id or e.finish == node.id]
+        return resource
 
 ##############################################################################
 # Launch point

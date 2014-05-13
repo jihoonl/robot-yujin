@@ -1,0 +1,9 @@
+name: Adapter
+description: Manage resource allocations. 
+author: Smartylab
+priority: 3
+launcher_type: roslaunch
+launcher: bpel_adapter_cafe/adapter
+icon: bpel_adapter_cafe/adapter.png
+parameters: bpel_adapter_cafe/adapter
+interactions: bpel_adapter_cafe/adapter

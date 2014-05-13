@@ -1,0 +1,5 @@
+- resource_name: concert_service_admin/admin
+- resource_name: bpel_adapter_cafe/adapter
+  overrides:
+    interactions: cafe_concert/cafe_delivery
+- resource_name: cafe_concert/cafe_database
